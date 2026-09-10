@@ -1,26 +1,64 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #05060a;
+  --foreground: #f4f1ea;
+  --surface: #0d1018;
+  --accent: #f5c518;
+  --beat: #ff3b6b;
+  --sync: #3ee0b2;
+  --muted: #8b93a7;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-accent: var(--accent);
+  --color-beat: var(--beat);
+  --color-sync: var(--sync);
+  --color-muted: var(--muted);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+html,
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+}
+
+.studio-input {
+  width: 100%;
+  border-radius: 0.7rem;
+  border: 1px solid rgb(255 255 255 / 0.12);
+  background: rgb(0 0 0 / 0.4);
+  padding: 0.75rem 0.9rem;
+  color: var(--foreground);
+  outline: none;
+}
+
+.studio-input:focus {
+  border-color: color-mix(in srgb, var(--accent) 70%, white);
+}
+
+.studio-step {
+  height: 3rem;
+  width: 3rem;
+  border-radius: 0.7rem;
+  border: 1px solid rgb(255 255 255 / 0.12);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 1.25rem;
+}
+
+.studio-step:hover {
+  background: rgb(255 255 255 / 0.08);
+}
+
+body {
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 40%, transparent);
 }
