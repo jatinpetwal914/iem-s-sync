@@ -70,8 +70,8 @@ export function StudioShell({ teamId, canControl, children }: StudioShellProps) 
   ].filter((link) => !link.admin || canControl);
 
   return (
-    <div className="flex min-h-full overflow-x-hidden bg-[#07080d] text-foreground">
-      <aside className="sticky top-0 hidden h-dvh w-56 shrink-0 flex-col border-r border-white/8 bg-[#090b12] px-4 py-6 md:flex">
+    <div className="flex min-h-full overflow-x-hidden bg-background text-foreground">
+      <aside className="sticky top-0 hidden h-dvh w-56 shrink-0 flex-col border-r border-white/8 bg-surface px-4 py-6 md:flex">
         <Link href={routes.dashboard} className="px-2">
           <Wordmark />
         </Link>
@@ -81,10 +81,10 @@ export function StudioShell({ teamId, canControl, children }: StudioShellProps) 
               key={link.key}
               href={link.href}
               className={cn(
-                "rounded-lg px-3 py-2 font-mono text-[11px] tracking-[0.18em] uppercase",
+                "rounded-2xl px-3 py-2.5 font-mono text-[11px] tracking-[0.18em] uppercase",
                 isActive(pathname, link.href)
-                  ? "bg-white/8 text-accent"
-                  : "text-muted hover:bg-white/4 hover:text-foreground",
+                  ? "bg-accent/15 text-accent"
+                  : "text-muted hover:bg-white/5 hover:text-foreground",
               )}
             >
               {link.label}
@@ -102,8 +102,8 @@ export function StudioShell({ teamId, canControl, children }: StudioShellProps) 
           </Link>
           <LogoutButton />
         </header>
-        <main className="flex-1 pb-24 md:pb-0">{children}</main>
-        <nav className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-3 gap-1 border-t border-white/8 bg-[#090b12]/95 px-2 py-2 backdrop-blur md:hidden">
+        <main className="flex-1 pb-28 md:pb-0">{children}</main>
+        <nav className="fixed inset-x-3 bottom-3 z-20 grid grid-cols-3 gap-1 rounded-3xl border border-white/10 bg-surface/90 px-2 py-2 shadow-[0_12px_40px_rgba(0,0,0,0.45)] backdrop-blur-md md:hidden">
           {(canControl
             ? [
                 { href: resolvedTeamId ? beatControlRoute(resolvedTeamId) : routes.beatControl, label: "Control" },
@@ -120,8 +120,8 @@ export function StudioShell({ teamId, canControl, children }: StudioShellProps) 
               key={item.label}
               href={item.href}
               className={cn(
-                "rounded-lg py-3 text-center font-mono text-[10px] tracking-[0.2em] uppercase",
-                isActive(pathname, item.href) ? "bg-white/10 text-accent" : "text-muted",
+                "rounded-2xl py-3 text-center font-mono text-[10px] tracking-[0.2em] uppercase",
+                isActive(pathname, item.href) ? "bg-sync/15 text-sync" : "text-muted",
               )}
             >
               {item.label}

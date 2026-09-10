@@ -10,9 +10,9 @@ export async function SiteHeader() {
   const authenticated = gate === "authenticated";
 
   return (
-    <header className="flex items-center justify-between gap-4 px-5 py-5 sm:px-8">
+    <header className="sticky top-0 z-30 flex items-center justify-between gap-4 border-b border-white/8 bg-background/40 px-4 py-3 backdrop-blur-md sm:px-8 sm:py-4">
       <Link href={routes.home} aria-label="IEM Sync home">
-        <Wordmark />
+        <Wordmark compact />
       </Link>
       <nav className="flex items-center gap-2">
         {authenticated ? (
@@ -45,11 +45,11 @@ export async function SiteHeader() {
             <ButtonLink
               href={routes.login}
               variant="ghost"
-              className="hidden sm:inline-flex"
+              className="min-h-11 max-sm:hidden"
             >
               Log in
             </ButtonLink>
-            <ButtonLink href={routes.signup} variant="accent">
+            <ButtonLink href={routes.signup} variant="accent" className="min-h-11 px-4">
               Sign up
             </ButtonLink>
           </>

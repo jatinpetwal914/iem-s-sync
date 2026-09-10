@@ -18,7 +18,7 @@ export function TempoReference() {
       {metrics.map((metric) => (
         <div
           key={metric.label}
-          className="rounded-2xl border border-white/8 bg-background/80 px-4 py-4"
+          className="rounded-2xl border border-white/10 bg-background/50 px-4 py-4"
         >
           <p className="font-mono text-[10px] tracking-[0.2em] text-muted">
             {metric.label}

@@ -1,13 +1,13 @@
 @import "tailwindcss";
 
 :root {
-  --background: #05060a;
-  --foreground: #f4f1ea;
-  --surface: #0d1018;
-  --accent: #f5c518;
-  --beat: #ff3b6b;
-  --sync: #3ee0b2;
-  --muted: #8b93a7;
+  --background: #160c0a;
+  --foreground: #fff6ee;
+  --surface: #241512;
+  --accent: #ff7a3c;
+  --beat: #ff4d8d;
+  --sync: #2dd4c8;
+  --muted: #cbb7ab;
 }
 
 @theme inline {
@@ -28,11 +28,174 @@ body {
   color: var(--foreground);
 }
 
+.site-atmosphere {
+  background:
+    radial-gradient(1200px 640px at 50% -8%, #d45a24 0%, transparent 58%),
+    radial-gradient(720px 480px at 110% 18%, #7a1848 0%, transparent 52%),
+    radial-gradient(640px 420px at -10% 70%, #0f5e58 0%, transparent 48%),
+    var(--background);
+}
+
+.cta-gradient {
+  background-image: linear-gradient(90deg, #ff7a3c 0%, #ff4d8d 100%);
+  color: #fff;
+}
+
+.cta-gradient:hover {
+  background-image: linear-gradient(90deg, #ff8a55 0%, #ff68a0 100%);
+}
+
+.hero-orb {
+  pointer-events: none;
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(48px);
+  animation: float-glow 7s ease-in-out infinite;
+}
+
+.hero-orb-left {
+  left: -4rem;
+  top: 6rem;
+  height: 11rem;
+  width: 11rem;
+  background: color-mix(in srgb, var(--accent) 38%, transparent);
+}
+
+.hero-orb-right {
+  right: -3rem;
+  top: 12rem;
+  height: 13rem;
+  width: 13rem;
+  background: color-mix(in srgb, var(--beat) 32%, transparent);
+  animation-delay: -2.4s;
+}
+
+.hero-copy {
+  animation: fade-up 0.7s ease both;
+}
+
+.hero-copy-delay {
+  animation-delay: 0.08s;
+}
+
+.hero-copy-delay-2 {
+  animation-delay: 0.16s;
+}
+
+.hero-copy-delay-3 {
+  animation-delay: 0.24s;
+}
+
+.beat-ring {
+  position: absolute;
+  inset: 12%;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--sync) 55%, white);
+  animation: beat-ring 1.6s ease-out infinite;
+}
+
+.beat-ring-b {
+  animation-delay: 0.4s;
+  border-color: color-mix(in srgb, var(--accent) 60%, white);
+}
+
+.beat-ring-c {
+  animation-delay: 0.8s;
+  border-color: color-mix(in srgb, var(--beat) 55%, white);
+}
+
+.eq-bar {
+  width: 0.28rem;
+  height: 1.35rem;
+  transform-origin: bottom center;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--sync), var(--accent));
+  animation: eq-bar 0.85s ease-in-out infinite;
+}
+
+.eq-bar-1 {
+  animation-delay: 0s;
+  height: 0.7rem;
+}
+
+.eq-bar-2 {
+  animation-delay: 0.12s;
+  height: 1.1rem;
+}
+
+.eq-bar-3 {
+  animation-delay: 0.04s;
+  height: 1.45rem;
+}
+
+.eq-bar-4 {
+  animation-delay: 0.2s;
+  height: 1rem;
+}
+
+.eq-bar-5 {
+  animation-delay: 0.08s;
+  height: 0.8rem;
+}
+
+@keyframes beat-ring {
+  0% {
+    transform: scale(0.72);
+    opacity: 0.55;
+  }
+  100% {
+    transform: scale(1.45);
+    opacity: 0;
+  }
+}
+
+@keyframes eq-bar {
+  0%,
+  100% {
+    transform: scaleY(0.35);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes float-glow {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 0.8;
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .beat-ring,
+  .eq-bar,
+  .hero-copy,
+  .hero-orb {
+    animation: none;
+  }
+}
+
 .studio-input {
   width: 100%;
-  border-radius: 0.7rem;
+  border-radius: 1rem;
   border: 1px solid rgb(255 255 255 / 0.12);
-  background: rgb(0 0 0 / 0.4);
+  background: rgb(0 0 0 / 0.35);
   padding: 0.75rem 0.9rem;
   color: var(--foreground);
   outline: none;
@@ -45,7 +208,7 @@ body {
 .studio-step {
   height: 3rem;
   width: 3rem;
-  border-radius: 0.7rem;
+  border-radius: 1rem;
   border: 1px solid rgb(255 255 255 / 0.12);
   font-family: var(--font-geist-mono), ui-monospace, monospace;
   font-size: 1.25rem;

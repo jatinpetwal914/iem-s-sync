@@ -20,7 +20,7 @@ export async function AppShell({ children }: { children: ReactNode }) {
 
   if (session.status !== "authenticated") {
     return (
-      <div className="flex min-h-full flex-col bg-background">
+      <div className="site-atmosphere flex min-h-full flex-col">
         <SiteHeader />
         <main className="flex flex-1 flex-col">{children}</main>
         <SiteFooter />

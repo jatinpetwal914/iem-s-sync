@@ -7,7 +7,7 @@ type ConnectedMembersPanelProps = {
 
 export function ConnectedMembersPanel({ devices }: ConnectedMembersPanelProps) {
   return (
-    <section className="rounded-2xl border border-white/8 bg-[#0b0e16] p-5">
+    <section className="rounded-2xl border border-white/8 bg-surface p-5">
       <p className="font-mono text-[10px] tracking-[0.24em] text-muted">
         CONNECTED MEMBERS
       </p>

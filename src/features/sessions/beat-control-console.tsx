@@ -80,7 +80,7 @@ export function BeatControlConsole({
       <AudioGate audio={master.audio} onActivate={() => void master.activateAudio()} />
 
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <section className="rounded-2xl border border-white/8 bg-[#0b0e16] p-5">
+        <section className="rounded-2xl border border-white/8 bg-surface p-5">
           <Field label="GENRE">
             <select
               className="studio-input"
@@ -238,7 +238,7 @@ export function BeatControlConsole({
           </div>
         </section>
 
-        <section className="flex flex-col items-center gap-6 rounded-2xl border border-white/8 bg-[#0b0e16] p-5">
+        <section className="flex flex-col items-center gap-6 rounded-2xl border border-white/8 bg-surface p-5">
           <BeatIndicator position={master.position} beatsPerBar={barLength} />
           <div className="grid w-full grid-cols-2 gap-4 text-center">
             <Metric label="CURRENT BAR" value={String(master.position.barNumber)} />
@@ -249,7 +249,7 @@ export function BeatControlConsole({
 
       <ConnectedMembersPanel devices={master.devices} />
 
-      <section className="rounded-2xl border border-white/8 bg-[#0b0e16] p-5">
+      <section className="rounded-2xl border border-white/8 bg-surface p-5">
         <p className="font-mono text-[10px] tracking-[0.24em] text-muted">
           MUSIC PROMPT ENGINE
         </p>

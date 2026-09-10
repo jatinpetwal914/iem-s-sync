@@ -1,4 +1,5 @@
 export const APP_NAME = "IEM Sync";
+export const APP_PUNCHLINE = "Connect you with the beat";
 export const APP_TAGLINE = "Synchronized beat platform for music teams";
 export const APP_DESCRIPTION =
   "One master clock. Local audio on every device. No streamed click.";

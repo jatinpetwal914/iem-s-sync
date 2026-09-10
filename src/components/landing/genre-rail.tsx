@@ -6,7 +6,7 @@ export function GenreRail() {
       {genres.map((genre) => (
         <li
           key={genre.id}
-          className="rounded-2xl border border-white/8 bg-background/70 px-4 py-4"
+          className="rounded-2xl border border-white/10 bg-background/50 px-4 py-4"
         >
           <p className="text-sm font-medium text-foreground">{genre.name}</p>
           <p className="mt-1 font-mono text-xs text-accent">

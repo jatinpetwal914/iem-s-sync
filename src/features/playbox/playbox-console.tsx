@@ -60,7 +60,7 @@ export function PlayBoxConsole({
 
       <AudioGate audio={master.audio} onActivate={() => void master.activateAudio()} />
 
-      <div className="rounded-3xl border border-white/8 bg-[#0b0e16] px-4 py-6">
+      <div className="rounded-3xl border border-white/8 bg-surface px-4 py-6">
         <p className="text-center font-mono text-[10px] tracking-[0.24em] text-muted">
           MASTER BPM
         </p>
@@ -97,7 +97,7 @@ export function PlayBoxConsole({
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-white/8 bg-[#0b0e16] px-3 py-3">
+    <div className="rounded-2xl border border-white/8 bg-surface px-3 py-3">
       <dt className="font-mono text-[9px] tracking-[0.2em] text-muted">{label}</dt>
       <dd className="mt-1 text-lg font-semibold tracking-tight">{value}</dd>
     </div>
