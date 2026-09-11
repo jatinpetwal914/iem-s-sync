@@ -21,6 +21,7 @@ export type Database = {
           created_by: string;
           genre_id: string | null;
           id: string;
+          monitor_audio_enabled: boolean;
           pause_at: string | null;
           position_beats: number;
           revision: number;
@@ -42,6 +43,7 @@ export type Database = {
           created_by: string;
           genre_id?: string | null;
           id?: string;
+          monitor_audio_enabled?: boolean;
           pause_at?: string | null;
           position_beats?: number;
           revision?: number;
@@ -63,6 +65,7 @@ export type Database = {
           created_by?: string;
           genre_id?: string | null;
           id?: string;
+          monitor_audio_enabled?: boolean;
           pause_at?: string | null;
           position_beats?: number;
           revision?: number;
@@ -189,6 +192,54 @@ export type Database = {
             columns: ["user_id"];
             isOneToOne: false;
             referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      monitor_mixes: {
+        Row: {
+          created_at: string;
+          id: string;
+          locked: boolean;
+          receiver_id: string;
+          revision: number;
+          sources: Json;
+          team_id: string;
+          updated_at: string;
+        };
+        Insert: {
+          created_at?: string;
+          id?: string;
+          locked?: boolean;
+          receiver_id: string;
+          revision?: number;
+          sources?: Json;
+          team_id: string;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          id?: string;
+          locked?: boolean;
+          receiver_id?: string;
+          revision?: number;
+          sources?: Json;
+          team_id?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "monitor_mixes_receiver_id_fkey";
+            columns: ["receiver_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "monitor_mixes_team_id_fkey";
+            columns: ["team_id"];
+            isOneToOne: false;
+            referencedRelation: "teams";
             referencedColumns: ["id"];
           },
         ];
@@ -813,6 +864,22 @@ export type Database = {
           p_setlist_id?: string | null;
         };
         Returns: Database["public"]["Tables"]["beat_sessions"]["Row"];
+      };
+      configure_monitor_audio: {
+        Args: {
+          p_team_id: string;
+          p_enabled: boolean;
+        };
+        Returns: Database["public"]["Tables"]["beat_sessions"]["Row"];
+      };
+      save_monitor_mix: {
+        Args: {
+          p_team_id: string;
+          p_receiver_id: string;
+          p_sources: Json;
+          p_locked?: boolean;
+        };
+        Returns: Database["public"]["Tables"]["monitor_mixes"]["Row"];
       };
     };
     Enums: {

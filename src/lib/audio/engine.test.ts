@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { BeatAudioEngine } from "@/lib/audio/engine";
 import type { CompatibleAudioContext } from "@/lib/audio/types";
 
@@ -320,5 +320,77 @@ describe("BeatAudioEngine", () => {
     expect(engine.getSnapshot().mixer.eq.sync.low).toBe(6);
     engine.setMonitorMute(true);
     expect(engine.getSnapshot().mixer.monitorMute).toBe(true);
+  });
+
+  it("does not restart the scheduler when only the pattern revision changes", async () => {
+    const context = new FakeContext();
+    context.state = "running";
+    const engine = new BeatAudioEngine({
+      createContext: () => context,
+      clock: { now: () => 2_000 },
+      schedulerIntervalMs: 10_000,
+      lookaheadSec: 1,
+    });
+    await engine.activate();
+    engine.applySession({
+      status: "playing",
+      startAt: 2_000,
+      bpm: 120,
+      timeSignature: "4/4",
+      pattern: [1, 0, 0, 0],
+      positionBeats: 0,
+      revision: 20,
+    });
+    const firstBatch = context.sources.length;
+    engine.applySession({
+      status: "playing",
+      startAt: 2_000,
+      bpm: 120,
+      timeSignature: "4/4",
+      pattern: [1, 1, 0, 0],
+      positionBeats: 0,
+      revision: 21,
+    });
+    expect(context.sources.slice(0, firstBatch).every((source) => source.stopped)).toBe(
+      false,
+    );
+    expect(engine.getSnapshot().pattern).toEqual([1, 1, 0, 0]);
+    await engine.destroy();
+  });
+
+  it("re-anchors from startAt when the synchronized clock jumps", async () => {
+    vi.useFakeTimers();
+    try {
+      const context = new FakeContext();
+      context.state = "running";
+      let now = 2_000;
+      const engine = new BeatAudioEngine({
+        createContext: () => context,
+        clock: { now: () => now },
+        schedulerIntervalMs: 25,
+        lookaheadSec: 0.05,
+      });
+      await engine.activate();
+      engine.start({
+        startAt: 2_000,
+        bpm: 120,
+        timeSignature: "4/4",
+        pattern: [1, 0, 0, 0],
+      });
+      const firstBatch = context.sources.length;
+      const indexBefore = engine.getSnapshot().nextBeatIndex;
+      expect(firstBatch).toBeGreaterThan(0);
+
+      now = 3_000;
+      await vi.advanceTimersByTimeAsync(25);
+
+      expect(context.sources.slice(0, firstBatch).every((source) => source.stopped)).toBe(
+        true,
+      );
+      expect(engine.getSnapshot().nextBeatIndex).toBeGreaterThan(indexBefore);
+      await engine.destroy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

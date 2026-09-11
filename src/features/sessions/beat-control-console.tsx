@@ -8,13 +8,17 @@ import { ConnectedMembersPanel } from "@/components/studio/connected-members";
 import { LatencyDisclaimer } from "@/components/studio/latency-disclaimer";
 import { TransportBar } from "@/components/studio/transport-bar";
 import { MixerPanel } from "@/components/studio/mixer-panel";
+import { PerformanceAudioPanel } from "@/components/studio/performance-audio-panel";
+import { MonitorMixBoard } from "@/components/studio/monitor-mix-board";
 import { useMasterSession } from "@/hooks/use-master-session";
+import { useMonitorAudio } from "@/hooks/use-monitor-audio";
 import { defaultBeatPattern, serializeBeatPattern } from "@/lib/sessions/pattern";
 import { TIME_SIGNATURE_OPTIONS } from "@/lib/sessions/time-signatures";
 import { beatsPerBar, parseTimeSignature } from "@/lib/tempo/time-signature";
 import { sessionTempoReadout } from "@/lib/tempo/format";
 import { buildMusicPrompt } from "@/lib/prompts/music-prompt";
 import { COUNT_IN_OPTIONS, getCountInView } from "@/lib/sync/count-in";
+import { sessionSyncLabel } from "@/lib/sync/clock";
 import type { MasterSession } from "@/lib/sessions/map-session";
 import { BPM_MAX, BPM_MIN, DEFAULT_BPM } from "@/lib/tempo/constants";
 import { parseBpmInput } from "@/lib/tempo/validation";
@@ -81,6 +85,27 @@ export function BeatControlConsole({
     master.audio.state !== "UNINITIALIZED" &&
     master.audio.state !== "ERROR" &&
     !master.audio.suspended;
+  const monitor = useMonitorAudio({
+    teamId,
+    userId,
+    enabled: Boolean(session?.monitorAudioEnabled),
+    audioReady,
+    canControl: true,
+    devices: master.devices,
+    engine: {
+      acquireCapture: (holder) => master.acquireCapture(holder),
+      releaseCapture: master.releaseCapture,
+      attachRemoteStream: master.attachRemoteStream,
+      detachRemoteStream: master.detachRemoteStream,
+      setRemoteMix: master.setRemoteMix,
+      clearRemoteStreams: master.clearRemoteStreams,
+    },
+  });
+  const devicesOnline = new Set(
+    master.devices
+      .filter((device) => device.connection === "CONNECTED" || device.connection === "UNSTABLE")
+      .map((device) => device.userId),
+  );
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 overflow-x-hidden px-4 py-6 sm:px-8">
@@ -97,6 +122,14 @@ export function BeatControlConsole({
           <Badge label="BPM" value={String(bpm)} />
           <Badge label="GENRE" value={genre?.shortName ?? "House"} />
           <Badge label="LINK" value={master.realtimeState.toUpperCase()} />
+          <Badge
+            label="SYNC"
+            value={sessionSyncLabel({
+              realtimeState: master.realtimeState,
+              sampleCount: master.clock.sampleCount,
+              quality: master.localSync,
+            })}
+          />
         </div>
       </header>
 
@@ -292,6 +325,30 @@ export function BeatControlConsole({
           </div>
         </section>
       </div>
+
+      <PerformanceAudioPanel
+        monitorEnabled={Boolean(session?.monitorAudioEnabled)}
+        busy={master.busy}
+        health={monitor.health}
+        readyCount={monitor.readyCount}
+        connectedCount={monitor.connectedCount}
+        initializing={Boolean(session?.monitorAudioEnabled) && monitor.phase === "connecting"}
+        error={monitor.error}
+        onToggle={(enabled) => void master.setMonitorAudioEnabled(enabled)}
+      />
+      {session?.monitorAudioEnabled ? (
+        <MonitorMixBoard
+          userId={userId}
+          roster={monitor.roster}
+          mixes={monitor.mixes}
+          devicesOnline={devicesOnline}
+          saving={monitor.saving}
+          saveError={monitor.saveError}
+          onSave={(receiverId, sources, locked) =>
+            void monitor.saveReceiverMix(receiverId, sources, locked)
+          }
+        />
+      ) : null}
 
       <LyricsBoard
         song={activeSong}

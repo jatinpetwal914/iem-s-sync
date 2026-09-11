@@ -22,6 +22,7 @@ export type MasterSession = {
   activeSongId: string | null;
   activeSetlistId: string | null;
   activeSectionId: string | null;
+  monitorAudioEnabled: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -51,6 +52,7 @@ export function mapBeatSessionRow(row: SessionRow): MasterSession {
     activeSongId: row.active_song_id,
     activeSetlistId: row.active_setlist_id,
     activeSectionId: row.active_section_id,
+    monitorAudioEnabled: Boolean(row.monitor_audio_enabled),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

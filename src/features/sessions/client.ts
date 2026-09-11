@@ -95,6 +95,20 @@ export async function configurePerformance(
   return mapBeatSessionRow(data);
 }
 
+export async function configureMonitorAudio(
+  supabase: TypedSupabase,
+  input: { teamId: string; enabled: boolean },
+): Promise<MasterSession> {
+  const { data, error } = await supabase.rpc("configure_monitor_audio", {
+    p_team_id: input.teamId,
+    p_enabled: input.enabled,
+  });
+  if (error || !data) {
+    throw new Error(error?.message ?? "Could not update monitor audio.");
+  }
+  return mapBeatSessionRow(data);
+}
+
 export async function fetchServerEpochMs(supabase: TypedSupabase): Promise<number> {
   const { data, error } = await supabase.rpc("server_time");
   if (error || !data) {

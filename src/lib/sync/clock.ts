@@ -1,4 +1,4 @@
-import { CLOCK_SAMPLE_COUNT, SYNC_THRESHOLDS_MS } from "@/lib/sync/constants";
+import { CLOCK_MAX_SAMPLE_RTT_MS, CLOCK_SAMPLE_COUNT, SYNC_THRESHOLDS_MS } from "@/lib/sync/constants";
 import type { SyncQuality } from "@/types/session";
 
 export type ClockSample = {
@@ -55,11 +55,14 @@ export class ClockSynchronizer {
       roundTripMs,
       sampledAt: t1,
     };
+    this.lastSyncAt = t1;
+    if (roundTripMs > CLOCK_MAX_SAMPLE_RTT_MS && this.samples.length > 0) {
+      return sample;
+    }
     this.samples.push(sample);
     if (this.samples.length > this.maxSamples) {
       this.samples.shift();
     }
-    this.lastSyncAt = t1;
     return sample;
   }
 
@@ -101,6 +104,36 @@ export function connectionLabel(quality: SyncQuality): "CONNECTED" | "UNSTABLE" 
     return "UNSTABLE";
   }
   return "CONNECTED";
+}
+
+export type SessionSyncLabel =
+  | "SYNCED"
+  | "SYNCING"
+  | "RECONNECTING"
+  | "OFFLINE"
+  | "UNSTABLE";
+
+export function sessionSyncLabel(input: {
+  realtimeState: "connecting" | "live" | "reconnecting" | "offline";
+  sampleCount: number;
+  quality: SyncQuality;
+}): SessionSyncLabel {
+  if (input.realtimeState === "offline") {
+    return "OFFLINE";
+  }
+  if (input.realtimeState === "reconnecting") {
+    return "RECONNECTING";
+  }
+  if (input.realtimeState === "connecting" || input.sampleCount === 0) {
+    return "SYNCING";
+  }
+  if (input.quality === "EXCELLENT" || input.quality === "GOOD") {
+    return "SYNCED";
+  }
+  if (input.quality === "OFFLINE") {
+    return "OFFLINE";
+  }
+  return "UNSTABLE";
 }
 
 function median(values: number[]): number | null {

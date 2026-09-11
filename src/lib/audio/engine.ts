@@ -20,6 +20,12 @@ import {
 import { isAccentBeat } from "@/lib/sessions/pattern";
 import { defaultBeatPattern } from "@/lib/sessions/pattern";
 import { startAtToEpochMs } from "@/lib/sync/playback-position";
+import {
+  beatAudioTime,
+  needsHardResync,
+  originAudioTime,
+  skipToUpcomingBeat,
+} from "@/lib/audio/timeline";
 import type {
   ApplySessionOptions,
   AudioEngineOptions,
@@ -32,7 +38,7 @@ import type {
 import { DEFAULT_BPM } from "@/lib/tempo/constants";
 import { micErrorMessage, requestPerformanceMic } from "@/lib/audio/mic";
 
-const DEFAULT_LOOKAHEAD_SEC = 0.12;
+const DEFAULT_LOOKAHEAD_SEC = 0.18;
 const DEFAULT_SCHEDULER_INTERVAL_MS = 25;
 
 type ScheduledSource = {
@@ -49,6 +55,12 @@ export class BeatAudioEngine {
   private backingChain: EqChain | null = null;
   private monitorSource: MediaStreamAudioSourceNode | null = null;
   private monitorStream: MediaStream | null = null;
+  private readonly captureHolders = new Set<string>();
+  private remoteBus: GainNode | null = null;
+  private readonly remotes = new Map<
+    string,
+    { source: MediaStreamAudioSourceNode; gain: GainNode; stream: MediaStream }
+  >();
   private mixer: MixerSnapshot = emptyMixer();
   private accentBuffer: AudioBuffer | null = null;
   private normalBuffer: AudioBuffer | null = null;
@@ -57,6 +69,8 @@ export class BeatAudioEngine {
   private pattern: number[] = defaultBeatPattern(4);
   private nextBeatIndex = 0;
   private nextNoteAudioTime = 0;
+  private timelineStartAtMs: number | null = null;
+  private anchoring = false;
   private schedulerTimer: ReturnType<typeof setTimeout> | null = null;
   private error: string | null = null;
   private appliedRevision = -1;
@@ -208,21 +222,17 @@ export class BeatAudioEngine {
       throw new Error("Playback requires a master start timestamp");
     }
 
-    const wallNow = this.clock.now();
-    const audioNow = this.context.currentTime;
-    const startAudioTime = audioNow + (startAtMs - wallNow) / 1000;
+    const origin = originAudioTime(
+      this.context.currentTime,
+      this.clock.now(),
+      startAtMs,
+    );
     const intervalSec = intervalMsFromBpm(this.bpm) / 1000;
-    let beatIndex = 0;
-    let noteTime = startAudioTime;
-    const horizon = audioNow - 0.02;
+    const next = skipToUpcomingBeat(origin, this.context.currentTime, intervalSec);
 
-    while (noteTime < horizon) {
-      beatIndex += 1;
-      noteTime += intervalSec;
-    }
-
-    this.nextBeatIndex = beatIndex;
-    this.nextNoteAudioTime = noteTime;
+    this.timelineStartAtMs = startAtMs;
+    this.nextBeatIndex = next.beatIndex;
+    this.nextNoteAudioTime = next.noteTime;
     this.state = "PLAYING";
     this.error = null;
     this.emit();
@@ -233,6 +243,7 @@ export class BeatAudioEngine {
   pause(): void {
     this.stopScheduler();
     this.stopScheduled();
+    this.timelineStartAtMs = null;
     if (this.state === "PLAYING") {
       this.state = "PAUSED";
     }
@@ -248,6 +259,7 @@ export class BeatAudioEngine {
     this.stopScheduled();
     this.nextBeatIndex = 0;
     this.nextNoteAudioTime = 0;
+    this.timelineStartAtMs = null;
     this.state = "STOPPED";
     this.emit();
   }
@@ -260,6 +272,8 @@ export class BeatAudioEngine {
     this.stopScheduler();
     this.stopScheduled();
     this.detachLifecycle();
+    this.captureHolders.clear();
+    this.clearRemoteStreams();
     this.stopMonitor(false);
     this.listeners.clear();
     if (this.context && this.context.state !== "closed") {
@@ -270,6 +284,7 @@ export class BeatAudioEngine {
     this.syncChain = null;
     this.monitorChain = null;
     this.backingChain = null;
+    this.remoteBus = null;
     this.accentBuffer = null;
     this.normalBuffer = null;
     this.state = "UNINITIALIZED";
@@ -281,6 +296,16 @@ export class BeatAudioEngine {
     if (!options.force && session.revision <= this.appliedRevision) {
       return;
     }
+
+    const timelineUnchanged =
+      !options.force &&
+      this.state === "PLAYING" &&
+      session.status === "playing" &&
+      this.lastSession != null &&
+      startAtToEpochMs(this.lastSession.startAt) === startAtToEpochMs(session.startAt) &&
+      this.lastSession.bpm === session.bpm &&
+      this.lastSession.timeSignature === session.timeSignature;
+
     this.appliedRevision = session.revision;
     this.lastSession = {
       ...session,
@@ -293,6 +318,10 @@ export class BeatAudioEngine {
     if (session.status === "playing") {
       if (session.startAt == null) {
         this.stop();
+        return;
+      }
+      if (timelineUnchanged) {
+        this.emit();
         return;
       }
       try {
@@ -326,6 +355,31 @@ export class BeatAudioEngine {
     }
 
     const intervalSec = intervalMsFromBpm(this.bpm) / 1000;
+    const startAtMs = this.timelineStartAtMs;
+    if (startAtMs != null) {
+      const origin = originAudioTime(
+        this.context.currentTime,
+        this.clock.now(),
+        startAtMs,
+      );
+      const expected = beatAudioTime(origin, this.nextBeatIndex, intervalSec);
+      if (needsHardResync(expected, this.nextNoteAudioTime) && !this.anchoring) {
+        this.anchoring = true;
+        try {
+          this.start({
+            startAt: startAtMs,
+            bpm: this.bpm,
+            timeSignature: this.timeSignature,
+            pattern: this.pattern,
+          });
+        } finally {
+          this.anchoring = false;
+        }
+        return;
+      }
+      this.nextNoteAudioTime = expected;
+    }
+
     const barLength = this.beatsPerBar();
     const horizon = this.context.currentTime + this.lookaheadSec;
 
@@ -422,9 +476,8 @@ export class BeatAudioEngine {
     }
 
     try {
-      const stream = await requestPerformanceMic();
-      this.stopMonitor(false);
-      this.monitorStream = stream;
+      const stream = await this.acquireCapture("monitor");
+      this.disconnectMonitorSource();
       this.monitorSource = this.context.createMediaStreamSource(stream);
       if (this.monitorChain) {
         this.monitorSource.connect(this.monitorChain.gain);
@@ -435,6 +488,7 @@ export class BeatAudioEngine {
       this.emit();
       return this.getSnapshot();
     } catch (error) {
+      this.releaseCapture("monitor");
       this.mixer.monitorEnabled = false;
       this.mixer.monitorError = micErrorMessage(error, "monitor");
       this.emit();
@@ -443,7 +497,7 @@ export class BeatAudioEngine {
   }
 
   disableMonitor(): AudioEngineSnapshot {
-    this.stopMonitor(true);
+    this.releaseCapture("monitor");
     this.emit();
     return this.getSnapshot();
   }
@@ -452,12 +506,99 @@ export class BeatAudioEngine {
     return this.monitorStream;
   }
 
+  async acquireCapture(holder: string): Promise<MediaStream> {
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      throw Object.assign(new Error("This browser cannot access a microphone."), {
+        name: "NotSupportedError",
+      });
+    }
+    if (!this.monitorStream) {
+      this.monitorStream = await requestPerformanceMic();
+    }
+    this.captureHolders.add(holder);
+    return this.monitorStream;
+  }
+
+  releaseCapture(holder: string): void {
+    this.captureHolders.delete(holder);
+    if (holder === "monitor") {
+      this.disconnectMonitorSource();
+      this.mixer.monitorEnabled = false;
+      this.mixer.monitorError = null;
+      this.applyMixerGains(true);
+    }
+    if (this.captureHolders.size === 0) {
+      this.stopCaptureTracks();
+    }
+  }
+
   async requestInputStream(): Promise<{ stream: MediaStream; owned: boolean }> {
     if (this.monitorStream) {
       return { stream: this.monitorStream, owned: false };
     }
     const stream = await requestPerformanceMic();
     return { stream, owned: true };
+  }
+
+  attachRemoteStream(userId: string, stream: MediaStream): void {
+    if (!this.context || typeof this.context.createMediaStreamSource !== "function") {
+      return;
+    }
+    if (!this.masterGain) {
+      return;
+    }
+    const existing = this.remotes.get(userId);
+    if (existing?.stream === stream) {
+      return;
+    }
+    this.detachRemoteStream(userId);
+    if (!this.remoteBus) {
+      this.remoteBus = this.context.createGain();
+      this.remoteBus.gain.value = 1;
+      this.remoteBus.connect(this.masterGain);
+    }
+    const source = this.context.createMediaStreamSource(stream);
+    const gain = this.context.createGain();
+    gain.gain.value = 0;
+    source.connect(gain);
+    gain.connect(this.remoteBus);
+    this.remotes.set(userId, { source, gain, stream });
+  }
+
+  detachRemoteStream(userId: string): void {
+    const remote = this.remotes.get(userId);
+    if (!remote) {
+      return;
+    }
+    this.remotes.delete(userId);
+    try {
+      remote.source.disconnect();
+      remote.gain.disconnect();
+    } catch {
+      // already disconnected
+    }
+  }
+
+  setRemoteMix(userId: string, linearGain: number): void {
+    const remote = this.remotes.get(userId);
+    if (!remote || !this.context) {
+      return;
+    }
+    rampGain(remote.gain, Math.max(0, linearGain), this.context);
+  }
+
+  clearRemoteStreams(): void {
+    for (const userId of [...this.remotes.keys()]) {
+      this.detachRemoteStream(userId);
+    }
+    if (this.remoteBus) {
+      try {
+        this.remoteBus.disconnect();
+      } catch {
+        // already disconnected
+      }
+      this.remoteBus = null;
+    }
   }
 
   private scheduleClick(audioTime: number, accent: boolean): void {
@@ -641,6 +782,16 @@ export class BeatAudioEngine {
   }
 
   private stopMonitor(updateMixer: boolean): void {
+    this.disconnectMonitorSource();
+    this.stopCaptureTracks();
+    if (updateMixer) {
+      this.mixer.monitorEnabled = false;
+      this.mixer.monitorError = null;
+      this.applyMixerGains(true);
+    }
+  }
+
+  private disconnectMonitorSource(): void {
     if (this.monitorSource) {
       try {
         this.monitorSource.disconnect();
@@ -649,16 +800,14 @@ export class BeatAudioEngine {
       }
       this.monitorSource = null;
     }
+  }
+
+  private stopCaptureTracks(): void {
     if (this.monitorStream) {
       for (const track of this.monitorStream.getTracks()) {
         track.stop();
       }
       this.monitorStream = null;
-    }
-    if (updateMixer) {
-      this.mixer.monitorEnabled = false;
-      this.mixer.monitorError = null;
-      this.applyMixerGains(true);
     }
   }
 }

@@ -3,6 +3,7 @@ import {
   canTransition,
   computePlayStartAt,
   computeResumeStartAt,
+  computeTempoChangeStartAt,
   beatsElapsedAt,
 } from "@/lib/sessions/transitions";
 import { START_AT_LEAD_MS } from "@/lib/sync/constants";
@@ -31,5 +32,12 @@ describe("session transitions", () => {
     const startAt = computeResumeStartAt(now, 3, 120);
     const elapsed = beatsElapsedAt(now + START_AT_LEAD_MS, startAt, 120);
     expect(elapsed).toBeCloseTo(3, 8);
+  });
+
+  it("rewrites tempo without adding play lead, so the current beat stays put", () => {
+    const now = 20_000;
+    const startAt = computeTempoChangeStartAt(now, 4, 90);
+    expect(beatsElapsedAt(now, startAt, 90)).toBeCloseTo(4, 8);
+    expect(startAt).toBeLessThan(now);
   });
 });

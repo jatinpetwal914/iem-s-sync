@@ -4,9 +4,10 @@ export type { CountInBars, CountInView } from "@/lib/sync/count-in";
 export {
   ClockSynchronizer,
   connectionLabel,
+  sessionSyncLabel,
   syncQualityFromRtt,
 } from "@/lib/sync/clock";
-export type { ClockSample, ClockSnapshot, ServerTimeClient } from "@/lib/sync/clock";
+export type { ClockSample, ClockSnapshot, ServerTimeClient, SessionSyncLabel } from "@/lib/sync/clock";
 export {
   shouldApplyRevision,
   isDuplicateRevision,
@@ -17,8 +18,17 @@ export {
   presenceChannelName,
   membershipChannelName,
   performanceChannelName,
+  monitorChannelName,
 } from "@/lib/sync/channels";
-export { CLOCK_SAMPLE_COUNT, DEVICE_HEARTBEAT_MS, DISPLAY_FRAME_MS, START_AT_LEAD_MS, SYNC_THRESHOLDS_MS } from "@/lib/sync/constants";
+export {
+  CLOCK_MAX_SAMPLE_RTT_MS,
+  CLOCK_REANCHOR_MS,
+  CLOCK_SAMPLE_COUNT,
+  DEVICE_HEARTBEAT_MS,
+  DISPLAY_FRAME_MS,
+  START_AT_LEAD_MS,
+  SYNC_THRESHOLDS_MS,
+} from "@/lib/sync/constants";
 export { getOrCreateDeviceId, parseUserAgent } from "@/lib/sync/device";
 export type {
   AppSessionStatus,

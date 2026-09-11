@@ -13,3 +13,7 @@ export function membershipChannelName(teamId: string): string {
 export function performanceChannelName(teamId: string): string {
   return `team-performance:${teamId}`;
 }
+
+export function monitorChannelName(teamId: string): string {
+  return `team-monitor:${teamId}`;
+}

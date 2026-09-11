@@ -14,6 +14,7 @@ import {
   syncQualityFromRtt,
   DISPLAY_FRAME_MS,
   DEVICE_HEARTBEAT_MS,
+  CLOCK_REANCHOR_MS,
 } from "@/lib/sync";
 import { SessionRevisionGate } from "@/lib/sync/revision-gate";
 import { getPlaybackPosition } from "@/lib/sync/playback-position";
@@ -23,6 +24,7 @@ import type { MasterSession } from "@/lib/sessions/map-session";
 import {
   controlBeatSession,
   configurePerformance,
+  configureMonitorAudio,
   ensureBeatSession,
   fetchBeatSession,
   fetchServerEpochMs,
@@ -113,6 +115,7 @@ export function useMasterSession({
   const [controlError, setControlError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const commandLockRef = useRef(false);
+  const appliedClockOffsetRef = useRef<number | null>(null);
 
   const nowFn = () => clockRef.current.getSynchronizedNow();
 
@@ -172,6 +175,37 @@ export function useMasterSession({
       window.clearInterval(timer);
     };
   }, [supabase]);
+
+  useEffect(() => {
+    if (clock.sampleCount === 0) {
+      return;
+    }
+    const previous = appliedClockOffsetRef.current;
+    const delta =
+      previous == null
+        ? Number.POSITIVE_INFINITY
+        : Math.abs(clock.clockOffsetMs - previous);
+    if (delta < CLOCK_REANCHOR_MS) {
+      return;
+    }
+    appliedClockOffsetRef.current = clock.clockOffsetMs;
+    const engine = engineRef.current;
+    if (!session || !engine || engine.getSnapshot().state === "UNINITIALIZED") {
+      return;
+    }
+    engine.applySession(
+      {
+        status: session.status,
+        startAt: session.startAt,
+        bpm: session.bpm,
+        timeSignature: session.timeSignature,
+        pattern: session.beatPattern,
+        positionBeats: session.positionBeats,
+        revision: session.revision,
+      },
+      { force: true },
+    );
+  }, [clock.clockOffsetMs, clock.sampleCount, session]);
 
   useEffect(() => {
     let cancelled = false;
@@ -478,6 +512,23 @@ export function useMasterSession({
     }
   }
 
+  async function setMonitorAudioEnabled(enabled: boolean) {
+    if (!canControl) {
+      setControlError("Master controls are locked.");
+      return;
+    }
+    setBusy(true);
+    setControlError(null);
+    try {
+      const next = await configureMonitorAudio(supabase, { teamId, enabled });
+      setSession(next);
+    } catch (error) {
+      setControlError(error instanceof Error ? error.message : "Monitor audio update failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function persistMixer() {
     const mixer = engineRef.current?.getSnapshot().mixer;
     if (!mixer) {
@@ -534,6 +585,33 @@ export function useMasterSession({
     return engineRef.current?.getMonitorStream() ?? null;
   }
 
+  function acquireCapture(holder: string) {
+    if (!engineRef.current) {
+      return Promise.reject(new Error("Activate audio before using the microphone."));
+    }
+    return engineRef.current.acquireCapture(holder);
+  }
+
+  function releaseCapture(holder: string) {
+    engineRef.current?.releaseCapture(holder);
+  }
+
+  function attachRemoteStream(remoteUserId: string, stream: MediaStream) {
+    engineRef.current?.attachRemoteStream(remoteUserId, stream);
+  }
+
+  function detachRemoteStream(remoteUserId: string) {
+    engineRef.current?.detachRemoteStream(remoteUserId);
+  }
+
+  function setRemoteMix(remoteUserId: string, linearGain: number) {
+    engineRef.current?.setRemoteMix(remoteUserId, linearGain);
+  }
+
+  function clearRemoteStreams() {
+    engineRef.current?.clearRemoteStreams();
+  }
+
   const appStatus = session
     ? deriveAppSessionStatus({
         status: session.status,
@@ -564,6 +642,7 @@ export function useMasterSession({
     activateAudio,
     runCommand,
     runPerformance,
+    setMonitorAudioEnabled,
     setMixerGain,
     setMixerEq,
     setMonitorMute,
@@ -572,6 +651,12 @@ export function useMasterSession({
     disableMonitor,
     requestInputStream,
     getMonitorStream,
+    acquireCapture,
+    releaseCapture,
+    attachRemoteStream,
+    detachRemoteStream,
+    setRemoteMix,
+    clearRemoteStreams,
   };
 }
 

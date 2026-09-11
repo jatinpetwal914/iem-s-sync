@@ -654,6 +654,72 @@ begin
     failed := array_append(failed, 'owner can set count-in and active song');
   end if;
 
+  -- Monitor Audio: optional gate + mix config. Live audio is never stored.
+  declare
+    v_rev integer;
+    v_rev2 integer;
+    v_mix_id uuid;
+    v_enabled boolean;
+  begin
+    select revision into v_rev from public.beat_sessions where id = v_session;
+    perform public.configure_monitor_audio(v_team, true);
+    select monitor_audio_enabled, revision into v_enabled, v_rev2
+    from public.beat_sessions where id = v_session;
+    if v_enabled is not true then
+      failed := array_append(failed, 'owner can enable monitor audio');
+    end if;
+    if v_rev2 <> v_rev then
+      failed := array_append(failed, 'monitor audio toggle must not bump session revision');
+    end if;
+
+    perform public.save_monitor_mix(
+      v_team,
+      v_member,
+      jsonb_build_object(
+        'self', jsonb_build_object('gain', 100, 'muted', false, 'solo', false),
+        'sync', jsonb_build_object('gain', 60, 'muted', false, 'solo', false),
+        v_owner::text, jsonb_build_object('gain', 80, 'muted', false, 'solo', false)
+      ),
+      false
+    );
+    select id into v_mix_id
+    from public.monitor_mixes
+    where team_id = v_team and receiver_id = v_member;
+    if v_mix_id is null then
+      failed := array_append(failed, 'owner can save a member mix');
+    end if;
+  end;
+
+  perform set_config('request.jwt.claim.sub', v_member::text, true);
+  perform set_config('request.jwt.claims', json_build_object('sub', v_member, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.monitor_mixes;
+  if n <> 1 then
+    failed := array_append(failed, 'member can read team monitor mixes');
+  end if;
+  begin
+    perform public.save_monitor_mix(v_team, v_owner, '{}'::jsonb, false);
+    failed := array_append(failed, 'member cannot save another mix');
+  exception when others then
+    null;
+  end;
+  begin
+    perform public.configure_monitor_audio(v_team, false);
+    failed := array_append(failed, 'member cannot toggle monitor audio');
+  exception when others then
+    null;
+  end;
+
+  perform set_config('request.jwt.claim.sub', v_outsider::text, true);
+  perform set_config('request.jwt.claims', json_build_object('sub', v_outsider, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.monitor_mixes;
+  if n <> 0 then
+    failed := array_append(failed, 'outsider cannot read monitor mixes');
+  end if;
+
+  perform set_config('request.jwt.claim.sub', v_owner::text, true);
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner, 'role', 'authenticated')::text, true);
+  perform public.configure_monitor_audio(v_team, false);
+
   update public.team_invites
   set status = 'revoked', revoked_at = now()
   where id = v_invite

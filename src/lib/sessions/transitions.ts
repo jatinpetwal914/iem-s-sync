@@ -17,6 +17,16 @@ export function computeResumeStartAt(
   return nowMs + START_AT_LEAD_MS - positionBeats * intervalMs;
 }
 
+export function computeTempoChangeStartAt(
+  nowMs: number,
+  positionBeats: number,
+  bpm: number,
+): number {
+  const validBpm = requireParsed(parseBpm(bpm), "BPM");
+  const intervalMs = MILLISECONDS_PER_MINUTE / validBpm;
+  return nowMs - positionBeats * intervalMs;
+}
+
 export function beatsElapsedAt(nowMs: number, startAtMs: number, bpm: number): number {
   const validBpm = requireParsed(parseBpm(bpm), "BPM");
   const elapsedMs = nowMs - startAtMs;

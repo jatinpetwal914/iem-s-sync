@@ -5,10 +5,13 @@ import { AudioGate } from "@/components/studio/audio-gate";
 import { BeatIndicator } from "@/components/studio/beat-indicator";
 import { LatencyDisclaimer } from "@/components/studio/latency-disclaimer";
 import { MixerPanel } from "@/components/studio/mixer-panel";
+import { PlayBoxMonitorPanel } from "@/components/studio/playbox-monitor-panel";
 import { useMasterSession } from "@/hooks/use-master-session";
+import { useMonitorAudio } from "@/hooks/use-monitor-audio";
+import { SELF_SOURCE_ID, SYNC_SOURCE_ID } from "@/lib/monitor/types";
 import { beatsPerBar, parseTimeSignature } from "@/lib/tempo/time-signature";
 import { sessionTempoReadout } from "@/lib/tempo/format";
-import { connectionLabel } from "@/lib/sync/clock";
+import { connectionLabel, sessionSyncLabel } from "@/lib/sync/clock";
 import { getCountInView } from "@/lib/sync/count-in";
 import { networkPingQuality } from "@/lib/devices/battery";
 import type { MasterSession } from "@/lib/sessions/map-session";
@@ -38,12 +41,31 @@ export function PlayBoxConsole({
     initialSession,
   });
   const library = usePerformanceLibrary(teamId);
+  const session = master.session;
+  const audioReady =
+    master.audio.state !== "UNINITIALIZED" &&
+    master.audio.state !== "ERROR" &&
+    !master.audio.suspended;
+  const monitor = useMonitorAudio({
+    teamId,
+    userId,
+    enabled: Boolean(session?.monitorAudioEnabled) && !master.membershipBlocked,
+    audioReady,
+    canControl: false,
+    devices: master.devices,
+    engine: {
+      acquireCapture: (holder) => master.acquireCapture(holder),
+      releaseCapture: master.releaseCapture,
+      attachRemoteStream: master.attachRemoteStream,
+      detachRemoteStream: master.detachRemoteStream,
+      setRemoteMix: master.setRemoteMix,
+      clearRemoteStreams: master.clearRemoteStreams,
+    },
+  });
 
   if (master.membershipBlocked) {
     return <PlayBoxBlockedState status="removed" teamId={teamId} />;
   }
-
-  const session = master.session;
   const bpm = session?.bpm ?? null;
   const timeSignature = session?.timeSignature ?? "4/4";
   const sampleRate = session?.sampleRate ?? 44100;
@@ -51,10 +73,12 @@ export function PlayBoxConsole({
   const parsed = parseTimeSignature(timeSignature);
   const barLength = parsed.ok ? beatsPerBar(parsed.value) : 4;
   const genre = genres.find((entry) => entry.id === session?.genreId);
-  const synced =
-    master.localSync === "EXCELLENT" || master.localSync === "GOOD"
-      ? "✓ SYNCHRONIZED"
-      : master.localSync;
+  const syncLabel = sessionSyncLabel({
+    realtimeState: master.realtimeState,
+    sampleCount: master.clock.sampleCount,
+    quality: master.localSync,
+  });
+  const synced = syncLabel === "SYNCED" ? "✓ SYNCED" : syncLabel;
   const countIn = getCountInView(
     master.position,
     session?.countInBars ?? 0,
@@ -67,10 +91,11 @@ export function PlayBoxConsole({
     countIn.songBarNumber,
   );
   const pingQuality = networkPingQuality(master.clock.roundTripMs);
-  const audioReady =
-    master.audio.state !== "UNINITIALIZED" &&
-    master.audio.state !== "ERROR" &&
-    !master.audio.suspended;
+  const devicesOnline = new Set(
+    master.devices
+      .filter((device) => device.connection === "CONNECTED" || device.connection === "UNSTABLE")
+      .map((device) => device.userId),
+  );
 
   return (
     <div className="mx-auto flex w-full max-w-lg flex-col gap-5 overflow-x-hidden px-4 py-5 landscape:max-w-5xl landscape:flex-row landscape:items-start">
@@ -116,6 +141,34 @@ export function PlayBoxConsole({
             />
           </div>
         </div>
+
+        <PlayBoxMonitorPanel
+          enabled={Boolean(session?.monitorAudioEnabled)}
+          audioReady={audioReady}
+          health={monitor.health}
+          micActive={monitor.micActive || master.audio.mixer.monitorEnabled}
+          error={monitor.error}
+          locked={monitor.locked}
+          roster={monitor.roster}
+          userId={userId}
+          sources={monitor.mergedMine}
+          devicesOnline={devicesOnline}
+          onPatch={(sourceId, patch) => {
+            monitor.patchLocalSource(sourceId, patch);
+            if (sourceId === SYNC_SOURCE_ID && patch.gain != null) {
+              master.setMixerGain("sync", patch.gain);
+            }
+            if (sourceId === SELF_SOURCE_ID && patch.gain != null) {
+              master.setMixerGain("monitor", patch.gain);
+            }
+            if (sourceId === SELF_SOURCE_ID && patch.muted != null) {
+              master.setMonitorMute(patch.muted);
+            }
+            if (sourceId === SELF_SOURCE_ID && patch.solo != null) {
+              master.setMonitorSolo(patch.solo);
+            }
+          }}
+        />
 
         <MixerPanel
           mixer={master.audio.mixer}
