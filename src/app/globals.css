@@ -205,17 +205,42 @@ body {
   border-color: color-mix(in srgb, var(--accent) 70%, white);
 }
 
-.studio-step {
+.studio-step,
+.studio-action {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
   height: 3rem;
-  width: 3rem;
   border-radius: 1rem;
   border: 1px solid rgb(255 255 255 / 0.12);
   font-family: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+.studio-step {
+  width: 3rem;
   font-size: 1.25rem;
 }
 
-.studio-step:hover {
+.studio-action {
+  min-width: 3rem;
+  padding: 0 1rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.studio-step:hover,
+.studio-action:hover {
   background: rgb(255 255 255 / 0.08);
+}
+
+.studio-step:disabled,
+.studio-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
 }
 
 body {

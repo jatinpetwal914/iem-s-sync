@@ -11,8 +11,12 @@ export type Database = {
     Tables: {
       beat_sessions: {
         Row: {
+          active_section_id: string | null;
+          active_setlist_id: string | null;
+          active_song_id: string | null;
           beat_pattern: string | null;
           bpm: number;
+          count_in_bars: number;
           created_at: string;
           created_by: string;
           genre_id: string | null;
@@ -28,8 +32,12 @@ export type Database = {
           updated_at: string;
         };
         Insert: {
+          active_section_id?: string | null;
+          active_setlist_id?: string | null;
+          active_song_id?: string | null;
           beat_pattern?: string | null;
           bpm?: number;
+          count_in_bars?: number;
           created_at?: string;
           created_by: string;
           genre_id?: string | null;
@@ -45,8 +53,12 @@ export type Database = {
           updated_at?: string;
         };
         Update: {
+          active_section_id?: string | null;
+          active_setlist_id?: string | null;
+          active_song_id?: string | null;
           beat_pattern?: string | null;
           bpm?: number;
+          count_in_bars?: number;
           created_at?: string;
           created_by?: string;
           genre_id?: string | null;
@@ -62,6 +74,27 @@ export type Database = {
           updated_at?: string;
         };
         Relationships: [
+          {
+            foreignKeyName: "beat_sessions_active_section_id_fkey";
+            columns: ["active_section_id"];
+            isOneToOne: false;
+            referencedRelation: "song_sections";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "beat_sessions_active_setlist_id_fkey";
+            columns: ["active_setlist_id"];
+            isOneToOne: false;
+            referencedRelation: "setlists";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "beat_sessions_active_song_id_fkey";
+            columns: ["active_song_id"];
+            isOneToOne: false;
+            referencedRelation: "songs";
+            referencedColumns: ["id"];
+          },
           {
             foreignKeyName: "beat_sessions_created_by_fkey";
             columns: ["created_by"];
@@ -80,6 +113,8 @@ export type Database = {
       };
       member_devices: {
         Row: {
+          battery_charging: boolean | null;
+          battery_percent: number | null;
           browser: string | null;
           clock_offset_ms: number | null;
           created_at: string;
@@ -97,6 +132,8 @@ export type Database = {
           user_id: string;
         };
         Insert: {
+          battery_charging?: boolean | null;
+          battery_percent?: number | null;
           browser?: string | null;
           clock_offset_ms?: number | null;
           created_at?: string;
@@ -114,6 +151,8 @@ export type Database = {
           user_id: string;
         };
         Update: {
+          battery_charging?: boolean | null;
+          battery_percent?: number | null;
           browser?: string | null;
           clock_offset_ms?: number | null;
           created_at?: string;
@@ -388,6 +427,324 @@ export type Database = {
           },
         ];
       };
+      setlist_items: {
+        Row: {
+          created_at: string;
+          id: string;
+          setlist_id: string;
+          song_id: string;
+          sort_order: number;
+          team_id: string;
+          updated_at: string;
+        };
+        Insert: {
+          created_at?: string;
+          id?: string;
+          setlist_id: string;
+          song_id: string;
+          sort_order: number;
+          team_id: string;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          id?: string;
+          setlist_id?: string;
+          song_id?: string;
+          sort_order?: number;
+          team_id?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "setlist_items_setlist_id_fkey";
+            columns: ["setlist_id"];
+            isOneToOne: false;
+            referencedRelation: "setlists";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "setlist_items_song_id_fkey";
+            columns: ["song_id"];
+            isOneToOne: false;
+            referencedRelation: "songs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "setlist_items_team_id_fkey";
+            columns: ["team_id"];
+            isOneToOne: false;
+            referencedRelation: "teams";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      setlists: {
+        Row: {
+          created_at: string;
+          created_by: string;
+          id: string;
+          name: string;
+          team_id: string;
+          updated_at: string;
+        };
+        Insert: {
+          created_at?: string;
+          created_by: string;
+          id?: string;
+          name: string;
+          team_id: string;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          created_by?: string;
+          id?: string;
+          name?: string;
+          team_id?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "setlists_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "setlists_team_id_fkey";
+            columns: ["team_id"];
+            isOneToOne: false;
+            referencedRelation: "teams";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      song_recordings: {
+        Row: {
+          created_at: string;
+          duration_ms: number;
+          file_size: number;
+          id: string;
+          mime_type: string;
+          performer_name: string | null;
+          performer_role: Database["public"]["Enums"]["user_role"] | null;
+          session_id: string | null;
+          song_id: string;
+          status: Database["public"]["Enums"]["recording_status"];
+          storage_path: string;
+          take_number: number;
+          team_id: string;
+          title: string;
+          updated_at: string;
+          user_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          duration_ms: number;
+          file_size: number;
+          id?: string;
+          mime_type: string;
+          performer_name?: string | null;
+          performer_role?: Database["public"]["Enums"]["user_role"] | null;
+          session_id?: string | null;
+          song_id: string;
+          status?: Database["public"]["Enums"]["recording_status"];
+          storage_path: string;
+          take_number?: number;
+          team_id: string;
+          title?: string;
+          updated_at?: string;
+          user_id: string;
+        };
+        Update: {
+          created_at?: string;
+          duration_ms?: number;
+          file_size?: number;
+          id?: string;
+          mime_type?: string;
+          performer_name?: string | null;
+          performer_role?: Database["public"]["Enums"]["user_role"] | null;
+          session_id?: string | null;
+          song_id?: string;
+          status?: Database["public"]["Enums"]["recording_status"];
+          storage_path?: string;
+          take_number?: number;
+          team_id?: string;
+          title?: string;
+          updated_at?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "song_recordings_session_id_fkey";
+            columns: ["session_id"];
+            isOneToOne: false;
+            referencedRelation: "beat_sessions";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "song_recordings_song_id_fkey";
+            columns: ["song_id"];
+            isOneToOne: false;
+            referencedRelation: "songs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "song_recordings_team_id_fkey";
+            columns: ["team_id"];
+            isOneToOne: false;
+            referencedRelation: "teams";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "song_recordings_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      song_sections: {
+        Row: {
+          bars: number | null;
+          chords: string | null;
+          created_at: string;
+          id: string;
+          kind: Database["public"]["Enums"]["song_section_kind"];
+          lyric_cues: Json;
+          lyrics: string | null;
+          song_id: string;
+          sort_order: number;
+          start_bar: number;
+          team_id: string;
+          title: string;
+          updated_at: string;
+        };
+        Insert: {
+          bars?: number | null;
+          chords?: string | null;
+          created_at?: string;
+          id?: string;
+          kind?: Database["public"]["Enums"]["song_section_kind"];
+          lyric_cues?: Json;
+          lyrics?: string | null;
+          song_id: string;
+          sort_order: number;
+          start_bar?: number;
+          team_id: string;
+          title: string;
+          updated_at?: string;
+        };
+        Update: {
+          bars?: number | null;
+          chords?: string | null;
+          created_at?: string;
+          id?: string;
+          kind?: Database["public"]["Enums"]["song_section_kind"];
+          lyric_cues?: Json;
+          lyrics?: string | null;
+          song_id?: string;
+          sort_order?: number;
+          start_bar?: number;
+          team_id?: string;
+          title?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "song_sections_song_id_fkey";
+            columns: ["song_id"];
+            isOneToOne: false;
+            referencedRelation: "songs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "song_sections_team_id_fkey";
+            columns: ["team_id"];
+            isOneToOne: false;
+            referencedRelation: "teams";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      songs: {
+        Row: {
+          backing_track_url: string | null;
+          bpm: number | null;
+          created_at: string;
+          created_by: string;
+          id: string;
+          lyrics_auto_advance: boolean;
+          lyrics_effect: Database["public"]["Enums"]["lyrics_effect"];
+          lyrics_highlight: boolean;
+          lyrics_speed: Database["public"]["Enums"]["lyrics_speed"];
+          lyrics_transition: Database["public"]["Enums"]["lyrics_transition"];
+          lyrics_upcoming_lines: number;
+          musical_key: string | null;
+          notes: string | null;
+          team_id: string;
+          time_signature: string;
+          title: string;
+          updated_at: string;
+        };
+        Insert: {
+          backing_track_url?: string | null;
+          bpm?: number | null;
+          created_at?: string;
+          created_by: string;
+          id?: string;
+          lyrics_auto_advance?: boolean;
+          lyrics_effect?: Database["public"]["Enums"]["lyrics_effect"];
+          lyrics_highlight?: boolean;
+          lyrics_speed?: Database["public"]["Enums"]["lyrics_speed"];
+          lyrics_transition?: Database["public"]["Enums"]["lyrics_transition"];
+          lyrics_upcoming_lines?: number;
+          musical_key?: string | null;
+          notes?: string | null;
+          team_id: string;
+          time_signature?: string;
+          title: string;
+          updated_at?: string;
+        };
+        Update: {
+          backing_track_url?: string | null;
+          bpm?: number | null;
+          created_at?: string;
+          created_by?: string;
+          id?: string;
+          lyrics_auto_advance?: boolean;
+          lyrics_effect?: Database["public"]["Enums"]["lyrics_effect"];
+          lyrics_highlight?: boolean;
+          lyrics_speed?: Database["public"]["Enums"]["lyrics_speed"];
+          lyrics_transition?: Database["public"]["Enums"]["lyrics_transition"];
+          lyrics_upcoming_lines?: number;
+          musical_key?: string | null;
+          notes?: string | null;
+          team_id?: string;
+          time_signature?: string;
+          title?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "songs_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "songs_team_id_fkey";
+            columns: ["team_id"];
+            isOneToOne: false;
+            referencedRelation: "teams";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       teams: {
         Row: {
           created_at: string;
@@ -448,6 +805,15 @@ export type Database = {
         };
         Returns: Database["public"]["Tables"]["beat_sessions"]["Row"];
       };
+      configure_performance: {
+        Args: {
+          p_team_id: string;
+          p_count_in_bars?: number | null;
+          p_song_id?: string | null;
+          p_setlist_id?: string | null;
+        };
+        Returns: Database["public"]["Tables"]["beat_sessions"]["Row"];
+      };
     };
     Enums: {
       event_type:
@@ -459,10 +825,25 @@ export type Database = {
         | "bpm_change"
         | "pattern_change"
         | "signature_change"
-        | "genre_change";
+        | "genre_change"
+        | "song_change"
+        | "count_in_change";
       invite_status: "active" | "expired" | "revoked" | "exhausted";
+      lyrics_effect: "static" | "line" | "karaoke" | "progressive";
+      lyrics_speed: "slow" | "normal" | "fast";
+      lyrics_transition: "instant" | "smooth";
       membership_status: "pending" | "approved" | "rejected" | "removed";
+      recording_status: "processing" | "ready" | "failed";
       session_status: "stopped" | "playing" | "paused";
+      song_section_kind:
+        | "intro"
+        | "verse"
+        | "pre_chorus"
+        | "chorus"
+        | "bridge"
+        | "solo"
+        | "outro"
+        | "custom";
       sync_status: "EXCELLENT" | "GOOD" | "UNSTABLE" | "OFFLINE";
       user_role: "OWNER" | "ADMIN" | "MEMBER";
     };

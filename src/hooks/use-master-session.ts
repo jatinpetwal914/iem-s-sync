@@ -22,6 +22,7 @@ import { deriveAppSessionStatus } from "@/lib/sessions/transitions";
 import type { MasterSession } from "@/lib/sessions/map-session";
 import {
   controlBeatSession,
+  configurePerformance,
   ensureBeatSession,
   fetchBeatSession,
   fetchServerEpochMs,
@@ -29,9 +30,15 @@ import {
   type TypedSupabase,
 } from "@/features/sessions/client";
 import type { AudioEngineSnapshot } from "@/lib/audio/types";
+import { DEFAULT_MIXER } from "@/lib/audio/graph";
+import type { EqBand, EqChannelId, MixerChannelId } from "@/lib/audio/graph";
+import { loadMixerPrefs, saveMixerPrefs } from "@/lib/audio/mixer-prefs";
+import { networkPingQuality, readBatteryStatus } from "@/lib/devices/battery";
 import type { SyncQuality } from "@/types/session";
 import type { ClockSnapshot } from "@/lib/sync/clock";
 import { DEFAULT_BPM } from "@/lib/tempo/constants";
+import { requestPerformanceMic } from "@/lib/audio/mic";
+import type { UserRole } from "@/types/roles";
 
 type UseMasterSessionOptions = {
   teamId: string;
@@ -44,8 +51,13 @@ export type DevicePresenceRow = {
   deviceId: string;
   userId: string;
   displayName: string;
+  role: UserRole | "MEMBER";
   connection: "CONNECTED" | "UNSTABLE" | "OFFLINE" | "SYNCING";
   latencyMs: number | null;
+  pingMs: number | null;
+  pingQuality: "Good" | "Fair" | "Poor" | null;
+  batteryPercent: number | null;
+  batteryCharging: boolean | null;
   syncStatus: SyncQuality;
   lastSeenAt: string | null;
   deviceLabel: string;
@@ -74,6 +86,16 @@ export function useMasterSession({
     pattern: initialSession?.beatPattern ?? [1, 0, 0, 0],
     nextBeatIndex: 0,
     error: null,
+    mixer: {
+      ...DEFAULT_MIXER,
+      monitorEnabled: false,
+      monitorError: null,
+      eq: {
+        sync: { ...DEFAULT_MIXER.eq.sync },
+        monitor: { ...DEFAULT_MIXER.eq.monitor },
+        backing: { ...DEFAULT_MIXER.eq.backing },
+      },
+    },
   });
   const [clock, setClock] = useState<ClockSnapshot>({
     clockOffsetMs: 0,
@@ -99,6 +121,7 @@ export function useMasterSession({
     const engine = new BeatAudioEngine({
       clock: { now: () => clockRef.current.getSynchronizedNow() },
     });
+    engine.applyLocalMixer(loadMixerPrefs(teamId));
     engineRef.current = engine;
     const unsub = engine.subscribe(setAudio);
     return () => {
@@ -106,7 +129,7 @@ export function useMasterSession({
       void engine.destroy();
       engineRef.current = null;
     };
-  }, []);
+  }, [teamId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -411,6 +434,106 @@ export function useMasterSession({
     }
   }
 
+  async function runPerformance(input: {
+    countInBars?: number | null;
+    songId?: string | null;
+    setlistId?: string | null;
+  }) {
+    if (!canControl) {
+      setControlError("Master controls are locked.");
+      return;
+    }
+    if (commandLockRef.current) {
+      return;
+    }
+    commandLockRef.current = true;
+    setBusy(true);
+    setControlError(null);
+    try {
+      if (!session) {
+        await ensureBeatSession(supabase, teamId);
+      }
+      const next = await configurePerformance(supabase, {
+        teamId,
+        countInBars: input.countInBars,
+        songId: input.songId,
+        setlistId: input.setlistId,
+      });
+      revisionRef.current.reset(next.revision);
+      setSession(next);
+      engineRef.current?.applySession({
+        status: next.status,
+        startAt: next.startAt,
+        bpm: next.bpm,
+        timeSignature: next.timeSignature,
+        pattern: next.beatPattern,
+        positionBeats: next.positionBeats,
+        revision: next.revision,
+      });
+    } catch (error) {
+      setControlError(error instanceof Error ? error.message : "Performance update failed.");
+    } finally {
+      commandLockRef.current = false;
+      setBusy(false);
+    }
+  }
+
+  function persistMixer() {
+    const mixer = engineRef.current?.getSnapshot().mixer;
+    if (!mixer) {
+      return;
+    }
+    saveMixerPrefs(teamId, {
+      master: mixer.master,
+      sync: mixer.sync,
+      monitor: mixer.monitor,
+      backing: mixer.backing,
+      monitorMute: mixer.monitorMute,
+      monitorSolo: mixer.monitorSolo,
+      eq: mixer.eq,
+    });
+  }
+
+  function setMixerGain(channel: MixerChannelId, percent: number) {
+    engineRef.current?.setChannelGain(channel, percent);
+    persistMixer();
+  }
+
+  function setMixerEq(channel: EqChannelId, band: EqBand, db: number) {
+    engineRef.current?.setEq(channel, band, db);
+    persistMixer();
+  }
+
+  function setMonitorMute(muted: boolean) {
+    engineRef.current?.setMonitorMute(muted);
+    persistMixer();
+  }
+
+  function setMonitorSolo(solo: boolean) {
+    engineRef.current?.setMonitorSolo(solo);
+    persistMixer();
+  }
+
+  async function enableMonitor() {
+    await engineRef.current?.enableMonitor();
+  }
+
+  function disableMonitor() {
+    engineRef.current?.disableMonitor();
+  }
+
+  async function requestInputStream() {
+    if (engineRef.current) {
+      return engineRef.current.requestInputStream();
+    }
+    const stream = await requestPerformanceMic();
+    return { stream, owned: true as const };
+  }
+
+  function getMonitorStream() {
+    return engineRef.current?.getMonitorStream() ?? null;
+  }
+
   const appStatus = session
     ? deriveAppSessionStatus({
         status: session.status,
@@ -440,6 +563,15 @@ export function useMasterSession({
     localSync,
     activateAudio,
     runCommand,
+    runPerformance,
+    setMixerGain,
+    setMixerEq,
+    setMonitorMute,
+    setMonitorSolo,
+    enableMonitor,
+    disableMonitor,
+    requestInputStream,
+    getMonitorStream,
   };
 }
 
@@ -501,6 +633,7 @@ async function heartbeatDevice(
     Date.now(),
     Date.now(),
   );
+  const battery = await readBatteryStatus();
   await supabase.from("member_devices").upsert({
     id: input.deviceId,
     user_id: input.userId,
@@ -513,6 +646,8 @@ async function heartbeatDevice(
     clock_offset_ms: input.clock.clockOffsetMs,
     round_trip_ms: input.clock.roundTripMs,
     estimated_latency_ms: input.clock.estimatedLatencyMs,
+    battery_percent: battery.percent,
+    battery_charging: battery.charging,
     sync_status: quality,
     last_seen_at: new Date().toISOString(),
   });
@@ -523,17 +658,28 @@ async function loadDevices(
   teamId: string,
   presence: RealtimePresenceState,
 ): Promise<DevicePresenceRow[]> {
-  const { data, error } = await supabase
-    .from("member_devices")
-    .select(
-      "id, user_id, last_seen_at, estimated_latency_ms, round_trip_ms, sync_status, device_label, browser, platform, profiles ( display_name )",
-    )
-    .eq("team_id", teamId)
-    .order("last_seen_at", { ascending: false });
+  const [{ data, error }, membersRes] = await Promise.all([
+    supabase
+      .from("member_devices")
+      .select(
+        "id, user_id, last_seen_at, estimated_latency_ms, round_trip_ms, sync_status, device_label, browser, platform, battery_percent, battery_charging, profiles ( display_name )",
+      )
+      .eq("team_id", teamId)
+      .order("last_seen_at", { ascending: false }),
+    supabase
+      .from("team_members")
+      .select("user_id, role")
+      .eq("team_id", teamId)
+      .eq("status", "approved"),
+  ]);
 
   if (error || !data) {
     return [];
   }
+
+  const roles = new Map(
+    (membersRes.data ?? []).map((row) => [row.user_id, row.role as UserRole]),
+  );
 
   const presenceIds = new Set(
     Object.values(presence).flatMap((entries) =>
@@ -570,13 +716,21 @@ async function loadDevices(
         ? String((profile as { display_name: string | null }).display_name ?? "Member")
         : "Member";
 
+    const pingMs = row.round_trip_ms == null ? null : Number(row.round_trip_ms);
+
     return {
       deviceId: row.id,
       userId: row.user_id,
       displayName,
+      role: roles.get(row.user_id) ?? "MEMBER",
       connection,
       latencyMs:
         row.estimated_latency_ms == null ? null : Number(row.estimated_latency_ms),
+      pingMs,
+      pingQuality: networkPingQuality(pingMs),
+      batteryPercent:
+        row.battery_percent == null ? null : Number(row.battery_percent),
+      batteryCharging: row.battery_charging,
       syncStatus: quality,
       lastSeenAt: row.last_seen_at,
       deviceLabel:

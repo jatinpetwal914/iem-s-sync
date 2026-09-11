@@ -18,6 +18,10 @@ export type MasterSession = {
   pauseAt: string | null;
   positionBeats: number;
   revision: number;
+  countInBars: number;
+  activeSongId: string | null;
+  activeSetlistId: string | null;
+  activeSectionId: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -43,6 +47,10 @@ export function mapBeatSessionRow(row: SessionRow): MasterSession {
     pauseAt: row.pause_at,
     positionBeats: Number(row.position_beats ?? 0),
     revision: Number(row.revision),
+    countInBars: Number(row.count_in_bars ?? 0),
+    activeSongId: row.active_song_id,
+    activeSetlistId: row.active_setlist_id,
+    activeSectionId: row.active_section_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

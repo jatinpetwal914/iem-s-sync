@@ -15,6 +15,7 @@ declare
   v_invite uuid;
   v_expired_invite uuid;
   v_revoked_invite uuid;
+  v_song uuid;
   v_json jsonb;
   n int;
   hashed text;
@@ -613,6 +614,45 @@ begin
 
   perform set_config('request.jwt.claim.sub', v_owner::text, true);
   perform set_config('request.jwt.claims', json_build_object('sub', v_owner, 'role', 'authenticated')::text, true);
+
+  insert into public.songs (team_id, created_by, title, bpm)
+  values (v_team, v_owner, 'Perfect', 95)
+  returning id into v_song;
+
+  perform set_config('request.jwt.claim.sub', v_member::text, true);
+  perform set_config('request.jwt.claims', json_build_object('sub', v_member, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.songs where team_id = v_team;
+  if n <> 1 then
+    failed := array_append(failed, 'approved member can read team songs');
+  end if;
+  begin
+    insert into public.songs (team_id, created_by, title)
+    values (v_team, v_member, 'Stolen Song');
+    failed := array_append(failed, 'member cannot create songs');
+  exception when others then
+    null;
+  end;
+  begin
+    perform public.configure_performance(v_team, 1, v_song, null);
+    failed := array_append(failed, 'member cannot configure performance');
+  exception when others then
+    null;
+  end;
+
+  perform set_config('request.jwt.claim.sub', v_outsider::text, true);
+  perform set_config('request.jwt.claims', json_build_object('sub', v_outsider, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.songs;
+  if n <> 0 then
+    failed := array_append(failed, 'outsider cannot read songs');
+  end if;
+
+  perform set_config('request.jwt.claim.sub', v_owner::text, true);
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner, 'role', 'authenticated')::text, true);
+  perform public.configure_performance(v_team, 1, v_song, null);
+  select count_in_bars into n from public.beat_sessions where id = v_session;
+  if n <> 1 then
+    failed := array_append(failed, 'owner can set count-in and active song');
+  end if;
 
   update public.team_invites
   set status = 'revoked', revoked_at = now()

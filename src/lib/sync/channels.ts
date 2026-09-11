@@ -9,3 +9,7 @@ export function presenceChannelName(teamId: string): string {
 export function membershipChannelName(teamId: string): string {
   return `team-members:${teamId}`;
 }
+
+export function performanceChannelName(teamId: string): string {
+  return `team-performance:${teamId}`;
+}

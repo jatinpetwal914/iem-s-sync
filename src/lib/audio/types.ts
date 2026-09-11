@@ -1,3 +1,5 @@
+import type { MixerSnapshot } from "@/lib/audio/graph";
+
 export type AudioEngineState =
   | "UNINITIALIZED"
   | "READY"
@@ -16,6 +18,7 @@ export type AudioEngineSnapshot = {
   pattern: number[];
   nextBeatIndex: number;
   error: string | null;
+  mixer: MixerSnapshot;
 };
 
 export type TransportSession = {
@@ -54,10 +57,12 @@ export type CompatibleAudioContext = Pick<
   | "createGain"
   | "createBuffer"
   | "createBufferSource"
+  | "createBiquadFilter"
   | "resume"
   | "suspend"
   | "close"
 > & {
+  createMediaStreamSource?(stream: MediaStream): MediaStreamAudioSourceNode;
   addEventListener?(
     type: "statechange",
     listener: () => void,

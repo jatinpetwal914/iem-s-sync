@@ -4,7 +4,15 @@ import type { CompatibleAudioContext } from "@/lib/audio/types";
 
 class FakeParam {
   value = 1;
-  setValueAtTime() {}
+  ramps: number[] = [];
+  setValueAtTime(next: number) {
+    this.value = next;
+  }
+  linearRampToValueAtTime(next: number) {
+    this.value = next;
+    this.ramps.push(next);
+  }
+  cancelScheduledValues() {}
   exponentialRampToValueAtTime() {}
 }
 
@@ -13,6 +21,13 @@ class FakeNode {
     return this;
   }
   disconnect() {}
+}
+
+class FakeBiquad extends FakeNode {
+  type: BiquadFilterType = "peaking";
+  frequency = new FakeParam();
+  Q = new FakeParam();
+  gain = new FakeParam();
 }
 
 class FakeSource extends FakeNode {
@@ -40,6 +55,10 @@ class FakeContext implements CompatibleAudioContext {
     const node = new FakeNode() as unknown as GainNode;
     (node as unknown as { gain: FakeParam }).gain = new FakeParam();
     return node;
+  }
+
+  createBiquadFilter() {
+    return new FakeBiquad() as unknown as BiquadFilterNode;
   }
 
   createBuffer(channels: number, length: number, sampleRate: number) {
@@ -285,5 +304,21 @@ describe("BeatAudioEngine", () => {
     await engine.handleForeground();
     expect(engine.getSnapshot().state).toBe("PLAYING");
     expect(engine.getSnapshot().nextBeatIndex).toBe(beforeHide);
+  });
+
+  it("ramps mixer gains without recreating the graph", async () => {
+    const context = new FakeContext();
+    context.state = "running";
+    const engine = new BeatAudioEngine({
+      createContext: () => context,
+      clock: { now: () => 2_000 },
+    });
+    await engine.activate();
+    engine.setChannelGain("sync", 40);
+    engine.setEq("sync", "low", 6);
+    expect(engine.getSnapshot().mixer.sync).toBe(40);
+    expect(engine.getSnapshot().mixer.eq.sync.low).toBe(6);
+    engine.setMonitorMute(true);
+    expect(engine.getSnapshot().mixer.monitorMute).toBe(true);
   });
 });

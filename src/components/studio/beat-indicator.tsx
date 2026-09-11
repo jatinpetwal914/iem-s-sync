@@ -1,27 +1,45 @@
-import type { PlaybackPosition } from "@/lib/sync/types";
 import { cn } from "@/utils/cn";
+import type { PlaybackPosition } from "@/lib/sync/types";
+import type { CountInView } from "@/lib/sync/count-in";
 
 type BeatIndicatorProps = {
   position: PlaybackPosition;
   beatsPerBar: number;
   size?: "lg" | "xl";
+  countIn?: CountInView | null;
 };
 
 export function BeatIndicator({
   position,
   beatsPerBar,
   size = "xl",
+  countIn = null,
 }: BeatIndicatorProps) {
   const active = position.isPlaying && !position.isScheduled;
   const scale = active ? 1.14 - position.phase * 0.14 : 1;
   const accent = position.beatInBar === 1;
+  const counting = Boolean(countIn?.active && countIn.display);
 
   return (
     <div
       className="flex flex-col items-center gap-6"
       aria-live="polite"
-      aria-label={`Bar ${position.barNumber}, beat ${position.beatInBar}`}
+      aria-label={
+        counting
+          ? `Count-in ${countIn?.display}`
+          : `Bar ${position.barNumber}, beat ${position.beatInBar}`
+      }
     >
+      {counting ? (
+        <div className="text-center">
+          <p className="font-mono text-[10px] tracking-[0.28em] text-accent">
+            COUNT-IN
+          </p>
+          <p className="mt-1 font-mono text-6xl font-semibold tabular-nums text-accent sm:text-7xl">
+            {countIn?.display}
+          </p>
+        </div>
+      ) : null}
       <div
         className={cn(
           "relative grid place-items-center rounded-full border",
@@ -51,7 +69,7 @@ export function BeatIndicator({
           </p>
         </div>
       </div>
-      <div className="flex gap-2">
+      <div className="flex gap-3" aria-hidden="true">
         {Array.from({ length: beatsPerBar }, (_, index) => {
           const beat = index + 1;
           const on = position.beatInBar === beat && active;
@@ -59,10 +77,12 @@ export function BeatIndicator({
             <span
               key={beat}
               className={cn(
-                "h-2.5 w-5 rounded-full sm:w-8",
-                on ? (beat === 1 ? "bg-accent" : "bg-beat") : "bg-white/12",
+                "font-mono text-lg leading-none",
+                on ? (beat === 1 ? "text-accent" : "text-beat") : "text-white/25",
               )}
-            />
+            >
+              {on ? "●" : "○"}
+            </span>
           );
         })}
       </div>

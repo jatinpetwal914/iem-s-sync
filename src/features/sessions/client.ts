@@ -74,6 +74,27 @@ export async function controlBeatSession(
   return mapBeatSessionRow(data);
 }
 
+export async function configurePerformance(
+  supabase: TypedSupabase,
+  input: {
+    teamId: string;
+    countInBars?: number | null;
+    songId?: string | null;
+    setlistId?: string | null;
+  },
+): Promise<MasterSession> {
+  const { data, error } = await supabase.rpc("configure_performance", {
+    p_team_id: input.teamId,
+    p_count_in_bars: input.countInBars ?? null,
+    p_song_id: input.songId ?? null,
+    p_setlist_id: input.setlistId ?? null,
+  });
+  if (error || !data) {
+    throw new Error(error?.message ?? "Could not update the performance.");
+  }
+  return mapBeatSessionRow(data);
+}
+
 export async function fetchServerEpochMs(supabase: TypedSupabase): Promise<number> {
   const { data, error } = await supabase.rpc("server_time");
   if (error || !data) {

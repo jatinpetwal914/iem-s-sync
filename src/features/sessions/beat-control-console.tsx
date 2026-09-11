@@ -7,15 +7,22 @@ import { BeatIndicator } from "@/components/studio/beat-indicator";
 import { ConnectedMembersPanel } from "@/components/studio/connected-members";
 import { LatencyDisclaimer } from "@/components/studio/latency-disclaimer";
 import { TransportBar } from "@/components/studio/transport-bar";
+import { MixerPanel } from "@/components/studio/mixer-panel";
 import { useMasterSession } from "@/hooks/use-master-session";
 import { defaultBeatPattern, serializeBeatPattern } from "@/lib/sessions/pattern";
 import { TIME_SIGNATURE_OPTIONS } from "@/lib/sessions/time-signatures";
 import { beatsPerBar, parseTimeSignature } from "@/lib/tempo/time-signature";
 import { sessionTempoReadout } from "@/lib/tempo/format";
 import { buildMusicPrompt } from "@/lib/prompts/music-prompt";
+import { COUNT_IN_OPTIONS, getCountInView } from "@/lib/sync/count-in";
 import type { MasterSession } from "@/lib/sessions/map-session";
 import { BPM_MAX, BPM_MIN, DEFAULT_BPM } from "@/lib/tempo/constants";
 import { parseBpmInput } from "@/lib/tempo/validation";
+import { SongLibraryPanel } from "@/features/songs/song-library-panel";
+import { SetlistPanel } from "@/features/songs/setlist-panel";
+import { LyricsBoard } from "@/features/songs/lyrics-board";
+import { usePerformanceLibrary } from "@/features/songs/use-performance-library";
+import { sectionAtSongBar } from "@/features/songs/section-progress";
 
 type BeatControlConsoleProps = {
   teamId: string;
@@ -36,6 +43,7 @@ export function BeatControlConsole({
     canControl: true,
     initialSession,
   });
+  const library = usePerformanceLibrary(teamId);
   const session = master.session;
   const bpm = session?.bpm ?? DEFAULT_BPM;
   const [bpmDraft, setBpmDraft] = useState<string | null>(null);
@@ -58,6 +66,21 @@ export function BeatControlConsole({
     sampleRate: tempo.sampleRate,
     samplesPerBeat: tempo.samplesPerBeat,
   });
+  const countIn = getCountInView(
+    master.position,
+    session?.countInBars ?? 0,
+    barLength,
+  );
+  const activeSong =
+    library.songs.find((entry) => entry.id === session?.activeSongId) ?? null;
+  const activeSection = sectionAtSongBar(
+    library.sections.filter((entry) => entry.songId === activeSong?.id),
+    countIn.songBarNumber,
+  );
+  const audioReady =
+    master.audio.state !== "UNINITIALIZED" &&
+    master.audio.state !== "ERROR" &&
+    !master.audio.suspended;
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 overflow-x-hidden px-4 py-6 sm:px-8">
@@ -220,6 +243,25 @@ export function BeatControlConsole({
             </div>
           </Field>
 
+          <Field label="COUNT-IN">
+            <select
+              className="studio-input"
+              aria-label="Count-in bars"
+              value={String(session?.countInBars ?? 0)}
+              onChange={(event) =>
+                void master.runPerformance({
+                  countInBars: Number(event.target.value),
+                })
+              }
+            >
+              {COUNT_IN_OPTIONS.map((bars) => (
+                <option key={bars} value={bars}>
+                  {bars === 0 ? "Off" : `${bars} bar${bars === 1 ? "" : "s"}`}
+                </option>
+              ))}
+            </select>
+          </Field>
+
           <div className="mt-8">
             <TransportBar
               status={session?.status ?? "stopped"}
@@ -239,13 +281,69 @@ export function BeatControlConsole({
         </section>
 
         <section className="flex flex-col items-center gap-6 rounded-2xl border border-white/8 bg-surface p-5">
-          <BeatIndicator position={master.position} beatsPerBar={barLength} />
+          <BeatIndicator
+            position={master.position}
+            beatsPerBar={barLength}
+            countIn={countIn}
+          />
           <div className="grid w-full grid-cols-2 gap-4 text-center">
-            <Metric label="CURRENT BAR" value={String(master.position.barNumber)} />
+            <Metric label="CURRENT BAR" value={String(countIn.songBarNumber)} />
             <Metric label="CURRENT BEAT" value={String(master.position.beatInBar)} />
           </div>
         </section>
       </div>
+
+      <LyricsBoard
+        song={activeSong}
+        section={activeSection}
+        sections={library.sections.filter((entry) => entry.songId === activeSong?.id)}
+        position={master.position}
+        bpm={bpm}
+        beatsPerBar={barLength}
+        countInBars={session?.countInBars ?? 0}
+        teamId={teamId}
+        userId={userId}
+        sessionId={session?.id ?? null}
+        canControl
+        requestInputStream={() => master.requestInputStream()}
+      />
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <SetlistPanel
+          teamId={teamId}
+          userId={userId}
+          songs={library.songs}
+          setlists={library.setlists}
+          items={library.items}
+          activeSetlistId={session?.activeSetlistId ?? null}
+          activeSongId={session?.activeSongId ?? null}
+          onSelectSetlist={(setlistId) =>
+            void master.runPerformance({ setlistId })
+          }
+          onSelectSong={(songId, setlistId) =>
+            void master.runPerformance({ songId, setlistId })
+          }
+        />
+        <SongLibraryPanel
+          teamId={teamId}
+          userId={userId}
+          songs={library.songs}
+          sections={library.sections}
+          activeSongId={session?.activeSongId ?? null}
+          onSelectSong={(songId) => void master.runPerformance({ songId })}
+        />
+      </div>
+
+      <MixerPanel
+        mixer={master.audio.mixer}
+        audioReady={audioReady}
+        onGain={master.setMixerGain}
+        onEq={master.setMixerEq}
+        onMonitorEnable={() => void master.enableMonitor()}
+        onMonitorDisable={master.disableMonitor}
+        onMonitorMute={master.setMonitorMute}
+        onMonitorSolo={master.setMonitorSolo}
+      />
 
       <ConnectedMembersPanel devices={master.devices} />
 

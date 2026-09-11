@@ -2,6 +2,21 @@ import { intervalMsFromBpm } from "@/lib/tempo/calculations";
 import { parseBpm, requireParsed } from "@/lib/tempo/validation";
 import { beatsPerBar, parseTimeSignature } from "@/lib/tempo/time-signature";
 import { createClickBuffer } from "@/lib/audio/clicks";
+import {
+  DEFAULT_MIXER,
+  applyEq,
+  clampDb,
+  clampPercent,
+  createEqChain,
+  effectiveChannelGain,
+  percentToGain,
+  rampGain,
+  type EqBand,
+  type EqChain,
+  type EqChannelId,
+  type MixerChannelId,
+  type MixerSnapshot,
+} from "@/lib/audio/graph";
 import { isAccentBeat } from "@/lib/sessions/pattern";
 import { defaultBeatPattern } from "@/lib/sessions/pattern";
 import { startAtToEpochMs } from "@/lib/sync/playback-position";
@@ -15,6 +30,7 @@ import type {
   WallClock,
 } from "@/lib/audio/types";
 import { DEFAULT_BPM } from "@/lib/tempo/constants";
+import { micErrorMessage, requestPerformanceMic } from "@/lib/audio/mic";
 
 const DEFAULT_LOOKAHEAD_SEC = 0.12;
 const DEFAULT_SCHEDULER_INTERVAL_MS = 25;
@@ -28,6 +44,12 @@ export class BeatAudioEngine {
   private state: AudioEngineState = "UNINITIALIZED";
   private context: CompatibleAudioContext | null = null;
   private masterGain: GainNode | null = null;
+  private syncChain: EqChain | null = null;
+  private monitorChain: EqChain | null = null;
+  private backingChain: EqChain | null = null;
+  private monitorSource: MediaStreamAudioSourceNode | null = null;
+  private monitorStream: MediaStream | null = null;
+  private mixer: MixerSnapshot = emptyMixer();
   private accentBuffer: AudioBuffer | null = null;
   private normalBuffer: AudioBuffer | null = null;
   private bpm = DEFAULT_BPM;
@@ -69,6 +91,7 @@ export class BeatAudioEngine {
       pattern: [...this.pattern],
       nextBeatIndex: this.nextBeatIndex,
       error: this.error,
+      mixer: cloneMixer(this.mixer),
     };
   }
 
@@ -88,8 +111,14 @@ export class BeatAudioEngine {
     try {
       this.context = this.createContext();
       this.masterGain = this.context.createGain();
-      this.masterGain.gain.value = 0.85;
+      this.syncChain = createEqChain(this.context);
+      this.monitorChain = createEqChain(this.context);
+      this.backingChain = createEqChain(this.context);
+      this.syncChain.high.connect(this.masterGain);
+      this.monitorChain.high.connect(this.masterGain);
+      this.backingChain.high.connect(this.masterGain);
       this.masterGain.connect(this.context.destination);
+      this.applyMixerGains(false);
       this.accentBuffer = createClickBuffer(this.context, "accent");
       this.normalBuffer = createClickBuffer(this.context, "normal");
       this.attachLifecycle();
@@ -231,12 +260,16 @@ export class BeatAudioEngine {
     this.stopScheduler();
     this.stopScheduled();
     this.detachLifecycle();
+    this.stopMonitor(false);
     this.listeners.clear();
     if (this.context && this.context.state !== "closed") {
       await this.context.close();
     }
     this.context = null;
     this.masterGain = null;
+    this.syncChain = null;
+    this.monitorChain = null;
+    this.backingChain = null;
     this.accentBuffer = null;
     this.normalBuffer = null;
     this.state = "UNINITIALIZED";
@@ -307,8 +340,128 @@ export class BeatAudioEngine {
     this.armScheduler();
   }
 
+  setChannelGain(channel: MixerChannelId, percent: number): void {
+    const value = clampPercent(percent);
+    if (channel === "master") {
+      this.mixer.master = value;
+    } else if (channel === "sync") {
+      this.mixer.sync = value;
+    } else if (channel === "monitor") {
+      this.mixer.monitor = value;
+    } else {
+      this.mixer.backing = value;
+    }
+    this.applyMixerGains(true);
+    this.emit();
+  }
+
+  setEq(channel: EqChannelId, band: EqBand, db: number): void {
+    this.mixer.eq[channel][band] = clampDb(db);
+    const chain = this.chainFor(channel);
+    if (chain) {
+      applyEq(chain, this.mixer.eq[channel]);
+    }
+    this.emit();
+  }
+
+  setMonitorMute(muted: boolean): void {
+    this.mixer.monitorMute = muted;
+    this.applyMixerGains(true);
+    this.emit();
+  }
+
+  setMonitorSolo(solo: boolean): void {
+    this.mixer.monitorSolo = solo;
+    this.applyMixerGains(true);
+    this.emit();
+  }
+
+  applyLocalMixer(
+    prefs: Omit<MixerSnapshot, "monitorEnabled" | "monitorError">,
+  ): void {
+    this.mixer = {
+      ...this.mixer,
+      ...prefs,
+      eq: {
+        sync: { ...prefs.eq.sync },
+        monitor: { ...prefs.eq.monitor },
+        backing: { ...prefs.eq.backing },
+      },
+    };
+    this.applyMixerGains(false);
+    if (this.syncChain) {
+      applyEq(this.syncChain, this.mixer.eq.sync);
+    }
+    if (this.monitorChain) {
+      applyEq(this.monitorChain, this.mixer.eq.monitor);
+    }
+    if (this.backingChain) {
+      applyEq(this.backingChain, this.mixer.eq.backing);
+    }
+    this.emit();
+  }
+
+  async enableMonitor(): Promise<AudioEngineSnapshot> {
+    if (this.mixer.monitorEnabled) {
+      return this.getSnapshot();
+    }
+    if (!this.context || this.state === "UNINITIALIZED") {
+      this.mixer.monitorError = "Activate the PlayBox before monitoring.";
+      this.emit();
+      return this.getSnapshot();
+    }
+    if (typeof this.context.createMediaStreamSource !== "function") {
+      this.mixer.monitorError = "This browser cannot monitor a live input.";
+      this.emit();
+      return this.getSnapshot();
+    }
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      this.mixer.monitorError = "This browser cannot access a microphone.";
+      this.emit();
+      return this.getSnapshot();
+    }
+
+    try {
+      const stream = await requestPerformanceMic();
+      this.stopMonitor(false);
+      this.monitorStream = stream;
+      this.monitorSource = this.context.createMediaStreamSource(stream);
+      if (this.monitorChain) {
+        this.monitorSource.connect(this.monitorChain.gain);
+      }
+      this.mixer.monitorEnabled = true;
+      this.mixer.monitorError = null;
+      this.applyMixerGains(true);
+      this.emit();
+      return this.getSnapshot();
+    } catch (error) {
+      this.mixer.monitorEnabled = false;
+      this.mixer.monitorError = micErrorMessage(error, "monitor");
+      this.emit();
+      return this.getSnapshot();
+    }
+  }
+
+  disableMonitor(): AudioEngineSnapshot {
+    this.stopMonitor(true);
+    this.emit();
+    return this.getSnapshot();
+  }
+
+  getMonitorStream(): MediaStream | null {
+    return this.monitorStream;
+  }
+
+  async requestInputStream(): Promise<{ stream: MediaStream; owned: boolean }> {
+    if (this.monitorStream) {
+      return { stream: this.monitorStream, owned: false };
+    }
+    const stream = await requestPerformanceMic();
+    return { stream, owned: true };
+  }
+
   private scheduleClick(audioTime: number, accent: boolean): void {
-    if (!this.context || !this.masterGain) {
+    if (!this.context || !this.syncChain) {
       return;
     }
     if (audioTime < this.context.currentTime - 0.01) {
@@ -324,7 +477,7 @@ export class BeatAudioEngine {
     const gain = this.context.createGain();
     source.buffer = buffer;
     source.connect(gain);
-    gain.connect(this.masterGain);
+    gain.connect(this.syncChain.gain);
     source.start(audioTime);
     const scheduled: ScheduledSource = { source, gain };
     this.scheduled.add(scheduled);
@@ -438,8 +591,103 @@ export class BeatAudioEngine {
       listener(snapshot);
     }
   }
+
+  private applyMixerGains(smooth: boolean): void {
+    if (!this.context) {
+      return;
+    }
+    const solo = this.mixer.monitorSolo && this.mixer.monitorEnabled;
+    const clock = this.context;
+    const apply = (node: GainNode | undefined, value: number) => {
+      if (!node) {
+        return;
+      }
+      if (smooth) {
+        rampGain(node, value, clock);
+      } else {
+        node.gain.value = value;
+      }
+    };
+
+    apply(this.masterGain ?? undefined, percentToGain(this.mixer.master));
+    apply(
+      this.syncChain?.gain,
+      effectiveChannelGain(this.mixer.sync, false, solo),
+    );
+    apply(
+      this.monitorChain?.gain,
+      this.mixer.monitorEnabled
+        ? effectiveChannelGain(
+            this.mixer.monitor,
+            this.mixer.monitorMute,
+            false,
+          )
+        : 0,
+    );
+    apply(
+      this.backingChain?.gain,
+      effectiveChannelGain(this.mixer.backing, false, solo),
+    );
+  }
+
+  private chainFor(channel: EqChannelId): EqChain | null {
+    if (channel === "sync") {
+      return this.syncChain;
+    }
+    if (channel === "monitor") {
+      return this.monitorChain;
+    }
+    return this.backingChain;
+  }
+
+  private stopMonitor(updateMixer: boolean): void {
+    if (this.monitorSource) {
+      try {
+        this.monitorSource.disconnect();
+      } catch {
+        // already disconnected
+      }
+      this.monitorSource = null;
+    }
+    if (this.monitorStream) {
+      for (const track of this.monitorStream.getTracks()) {
+        track.stop();
+      }
+      this.monitorStream = null;
+    }
+    if (updateMixer) {
+      this.mixer.monitorEnabled = false;
+      this.mixer.monitorError = null;
+      this.applyMixerGains(true);
+    }
+  }
 }
 
 export function createBeatAudioEngine(options?: AudioEngineOptions): BeatAudioEngine {
   return new BeatAudioEngine(options);
 }
+
+function emptyMixer(): MixerSnapshot {
+  return {
+    ...DEFAULT_MIXER,
+    monitorEnabled: false,
+    monitorError: null,
+    eq: {
+      sync: { ...DEFAULT_MIXER.eq.sync },
+      monitor: { ...DEFAULT_MIXER.eq.monitor },
+      backing: { ...DEFAULT_MIXER.eq.backing },
+    },
+  };
+}
+
+function cloneMixer(mixer: MixerSnapshot): MixerSnapshot {
+  return {
+    ...mixer,
+    eq: {
+      sync: { ...mixer.eq.sync },
+      monitor: { ...mixer.eq.monitor },
+      backing: { ...mixer.eq.backing },
+    },
+  };
+}
+
